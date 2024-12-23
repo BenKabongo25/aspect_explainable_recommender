@@ -256,15 +256,15 @@ class AURA(nn.Module):
         IA_embeddings = torch.stack(IA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
             
         U_embeddings_aggregated, U_attention_scores = self.user_attention(
-            Q=U_embeddings.unsqueeze(1), K=IA_embeddings, V=UA_embeddings
-        )
+            Q=U_embeddings.unsqueeze(1), K=UA_embeddings, V=UA_embeddings
+        ) # self attention
         U_attention_scores = U_attention_scores.squeeze(1) # (batch_size, n_aspects)
         U_embeddings_aggregated = U_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
         U_embeddings = U_embeddings_aggregated # no skip connection
 
         I_embeddings_aggregated, I_attention_scores = self.item_attention(
-            Q=I_embeddings.unsqueeze(1), K=UA_embeddings, V=IA_embeddings
-        )
+            Q=I_embeddings.unsqueeze(1), K=IA_embeddings, V=IA_embeddings
+        ) # self attention
         I_attention_scores = I_attention_scores.squeeze(1) # (batch_size, n_aspects)
         I_embeddings_aggregated = I_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
         I_embeddings = I_embeddings_aggregated # no skip connection

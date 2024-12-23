@@ -52,19 +52,22 @@ config.last_line_flag = False
 config.stem_flag = False
 config.lemmatize_flag = False
 
-for ablation in ["", "skip_connection", "pooling", "aspects_embeddings", "aspects_ratings", "aggregation", "cross_attention", "all_shared"]:
-    config.ablation = ablation
-    ablation = "AURA" + ablation
+for dropout in [0.1, 0.2, 0.3, 0.4, 0.5]:
+    config.dropout = dropout
 
-    for dataset in datasets:
-        config.dataset = dataset
-        config.aspects = aspects[dataset]
-        config.dataset_name = dataset
-        config.alpha = 1 / (1 + len(config.aspects))
-        config.beta = len(config.aspects) / (1 + len(config.aspects))
+    for ablation in ["aggregation"]:
+        config.ablation = ablation
+        ablation = "AURA" + ablation
 
-        config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
-        config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation)
+        for dataset in datasets:
+            config.dataset = dataset
+            config.aspects = aspects[dataset]
+            config.dataset_name = dataset
+            config.alpha = 1 / (1 + len(config.aspects))
+            config.beta = len(config.aspects) / (1 + len(config.aspects))
 
-        print(f"Running {dataset} with {ablation}")
-        run(config)
+            config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
+            config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation + f"_dropout_{dropout}")
+
+            print(f"Running {dataset} with {ablation} and dropout {dropout}")
+            run(config)

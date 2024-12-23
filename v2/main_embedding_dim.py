@@ -52,19 +52,22 @@ config.last_line_flag = False
 config.stem_flag = False
 config.lemmatize_flag = False
 
-for ablation in ["", "skip_connection", "pooling", "aspects_embeddings", "aspects_ratings", "aggregation", "cross_attention", "all_shared"]:
-    config.ablation = ablation
-    ablation = "AURA" + ablation
+for d_model in [32, 64, 128, 256, 512, 1024]:
+    config.d_model = d_model
 
-    for dataset in datasets:
-        config.dataset = dataset
-        config.aspects = aspects[dataset]
-        config.dataset_name = dataset
-        config.alpha = 1 / (1 + len(config.aspects))
-        config.beta = len(config.aspects) / (1 + len(config.aspects))
+    for ablation in ["aggregation"]:
+        config.ablation = ablation
+        ablation = "AURA" + ablation
 
-        config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
-        config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation)
+        for dataset in datasets:
+            config.dataset = dataset
+            config.aspects = aspects[dataset]
+            config.dataset_name = dataset
+            config.alpha = 1 / (1 + len(config.aspects))
+            config.beta = len(config.aspects) / (1 + len(config.aspects))
 
-        print(f"Running {dataset} with {ablation}")
-        run(config)
+            config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
+            config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation + f"_d_model_{d_model}")
+
+            print(f"Running {dataset} with {ablation} and d_model {d_model}")
+            run(config)
