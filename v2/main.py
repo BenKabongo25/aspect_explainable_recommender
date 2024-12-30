@@ -5,7 +5,7 @@
 import logging
 from torch.utils.tensorboard import SummaryWriter
 
-from ablations import *
+from architectures import *
 from data import *
 from evaluation import *
 from module import *
@@ -215,20 +215,22 @@ def trainer(model: AURA, config, train_dataloader, eval_dataloader):
 
 
 def get_model(config):
-    if config.ablation == "skip_connection": # w/ skip connection
-        model = AURAWithSkipConnection
-    elif config.ablation == "pooling": # w/ pooling
+    if config.architecture == "shared_self_attention": # w/ shared self attention
+        model = AURASharedSelfAttention
+    elif config.architecture == "notshared_self_attention": # w/o shared self attention
+        model = AURANotSharedSelfAttention
+    elif config.architecture == "shared_cross_attention": # w/ shared cross attention
+        model = AURASharedCrossAttention
+    elif config.architecture == "notshared_cross_attention": # w/o shared cross attention
+        model = AURANotSharedCrossAttention
+    elif config.architecture == "skip_connection": # w/ skip connection
+        model = AURASkipConnection
+    elif config.architecture == "pooling": # w/ pooling
         model = AURAPooling
-    elif config.ablation == "aspects_embeddings": # w/ shared aspects embeddings
+    elif config.architecture == "shared_aspects_embeddings": # w/ shared aspects embeddings
         model = AURASharedAspectsEmbedding
-    elif config.ablation == "aspects_ratings": # w/ shared aspects ratings
+    elif config.architecture == "shared_aspects_ratings": # w/ shared aspects ratings
         model = AURASharedAspectsRating
-    elif config.ablation == "aggregation": # w/ shared aggregation
-        model = AURASharedAggregation
-    elif config.ablation == "cross_attention": # w cross attention
-        model = AURACrossAggregation
-    elif config.ablation == "all_shared": # w/ all shared
-        model = AURAAllShared
     else:
         model = AURA
     return model
@@ -242,7 +244,7 @@ def run(config):
     config.res_file_path = os.path.join(config.save_dir, "res.json")
     config.save_model_path = os.path.join(config.save_dir, "model.pth")
 
-    logger = logging.getLogger("AURA" + config.ablation)
+    logger = logging.getLogger("AURA" + config.architecture)
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     file_handler = logging.FileHandler(config.log_file_path)
@@ -396,8 +398,6 @@ if __name__ == "__main__":
     parser.set_defaults(lemmatize_flag=False)
 
     # abllations
-    parser.add_argument("--ablation", type=str, default="",
-        choices=["", "skip_connection", "pooling", "aspects_embeddings", "aspects_ratings", 
-                 "aggregation", "cross_attention", "all_shared"])
+    parser.add_argument("--architecture", type=str, default="")
     config = parser.parse_args()
     run(config)

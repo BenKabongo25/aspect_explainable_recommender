@@ -99,13 +99,12 @@ class RatingsLoss(nn.Module):
         overall_rating_loss = self.overall_rating_loss(R_hat, R)
         aspect_rating_loss = self.aspect_rating_loss(A_ratings_hat.flatten(), A_ratings.flatten())
         total_loss = self.config.alpha * overall_rating_loss + self.config.beta * aspect_rating_loss
-        #print("Overall rating loss: ", overall_rating_loss)
-        #print("Aspect rating loss: ", aspect_rating_loss)
-        #print("Total loss: ", total_loss)
         return {"total": total_loss, "overall_rating": overall_rating_loss, "aspect_rating": aspect_rating_loss}
 
 
 class AURA(nn.Module):
+    """ AURA: Aspect-based Unified Ratings Prediction and Personalized
+        Review Generation with Attention """
 
     def __init__(self, config, text_module=None, tokenizer=None):
         super().__init__()
@@ -116,8 +115,7 @@ class AURA(nn.Module):
 
         self.user_embedding = nn.Embedding(config.n_users, config.d_model)
         self.item_embedding = nn.Embedding(config.n_items, config.d_model)
-        self.user_attention = Attention(config.d_model)
-        self.item_attention = Attention(config.d_model)
+        self.attention = Attention(config.d_model)
 
         self.user_aspects_embedding = nn.ModuleList([
             nn.Sequential(
@@ -160,11 +158,6 @@ class AURA(nn.Module):
             self.item_words_proj = nn.Linear(config.d_model, config.d_words)
             self.user_aspect_words_proj = nn.Linear(config.d_model, config.d_words)
             self.item_aspect_words_proj = nn.Linear(config.d_model, config.d_words)
-            #self.prompt_embedding = nn.Sequential(
-            #    nn.Linear(2 * (1 + self.config.n_aspects) * config.d_words, config.n_prompt * config.d_words),
-            #    nn.ReLU(),
-            #    nn.Linear(config.n_prompt * config.d_words, config.n_prompt * config.d_words)
-            #)
 
         self.training_phase = 0 # 0: ratings, 1: prompt, 2: text module + prompt
         self._init_weights()
@@ -194,9 +187,7 @@ class AURA(nn.Module):
             param.requires_grad = flag
         for param in self.item_embedding.parameters():
             param.requires_grad = flag
-        for param in self.user_attention.parameters():
-            param.requires_grad = flag
-        for param in self.item_attention.parameters():
+        for param in self.attention.parameters():
             param.requires_grad = flag
         for param in self.user_aspects_embedding.parameters():
             param.requires_grad = flag
@@ -255,14 +246,14 @@ class AURA(nn.Module):
         UA_embeddings = torch.stack(UA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
         IA_embeddings = torch.stack(IA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
             
-        U_embeddings_aggregated, U_attention_scores = self.user_attention(
+        U_embeddings_aggregated, U_attention_scores = self.attention(
             Q=U_embeddings.unsqueeze(1), K=UA_embeddings, V=UA_embeddings
         ) # self attention
         U_attention_scores = U_attention_scores.squeeze(1) # (batch_size, n_aspects)
         U_embeddings_aggregated = U_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
         U_embeddings = U_embeddings_aggregated # no skip connection
 
-        I_embeddings_aggregated, I_attention_scores = self.item_attention(
+        I_embeddings_aggregated, I_attention_scores = self.attention(
             Q=I_embeddings.unsqueeze(1), K=IA_embeddings, V=IA_embeddings
         ) # self attention
         I_attention_scores = I_attention_scores.squeeze(1) # (batch_size, n_aspects)

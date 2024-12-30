@@ -4,7 +4,7 @@
 import logging
 from torch.utils.tensorboard import SummaryWriter
 
-from ablations import *
+from v2.architectures import *
 from data import *
 from evaluation import *
 from module import *

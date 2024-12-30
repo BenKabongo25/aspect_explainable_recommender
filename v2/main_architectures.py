@@ -52,9 +52,13 @@ config.last_line_flag = False
 config.stem_flag = False
 config.lemmatize_flag = False
 
-for ablation in ["", "skip_connection", "pooling", "aspects_embeddings", "aspects_ratings", "aggregation", "cross_attention", "all_shared"]:
-    config.ablation = ablation
-    ablation = "AURA" + ablation
+for architecture in ["shared_self_attention", "notshared_self_attention", 
+                     "shared_cross_attention", "notshared_cross_attention", 
+                     "skip_connection", "pooling", 
+                     "shared_aspects_embeddings", "shared_aspects_ratings"]:
+    
+    config.architecture = architecture
+    architecture = "AURA" + architecture
 
     for dataset in datasets:
         config.dataset = dataset
@@ -64,7 +68,7 @@ for ablation in ["", "skip_connection", "pooling", "aspects_embeddings", "aspect
         config.beta = len(config.aspects) / (1 + len(config.aspects))
 
         config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
-        config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation)
+        config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, architecture)
 
-        print(f"Running {dataset} with {ablation}")
+        print(f"Running {dataset} with {architecture}")
         run(config)
