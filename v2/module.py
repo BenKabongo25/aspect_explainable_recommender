@@ -115,7 +115,8 @@ class AURA(nn.Module):
 
         self.user_embedding = nn.Embedding(config.n_users, config.d_model)
         self.item_embedding = nn.Embedding(config.n_items, config.d_model)
-        self.attention = Attention(config.d_model)
+        self.user_attention = Attention(config.d_model)
+        self.item_attention = Attention(config.d_model)
 
         self.user_aspects_embedding = nn.ModuleList([
             nn.Sequential(
@@ -187,7 +188,9 @@ class AURA(nn.Module):
             param.requires_grad = flag
         for param in self.item_embedding.parameters():
             param.requires_grad = flag
-        for param in self.attention.parameters():
+        for param in self.user_attention.parameters():
+            param.requires_grad = flag
+        for param in self.item_attention.parameters():
             param.requires_grad = flag
         for param in self.user_aspects_embedding.parameters():
             param.requires_grad = flag
@@ -246,14 +249,14 @@ class AURA(nn.Module):
         UA_embeddings = torch.stack(UA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
         IA_embeddings = torch.stack(IA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
             
-        U_embeddings_aggregated, U_attention_scores = self.attention(
+        U_embeddings_aggregated, U_attention_scores = self.user_attention(
             Q=U_embeddings.unsqueeze(1), K=UA_embeddings, V=UA_embeddings
         ) # self attention
         U_attention_scores = U_attention_scores.squeeze(1) # (batch_size, n_aspects)
         U_embeddings_aggregated = U_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
         U_embeddings = U_embeddings_aggregated # no skip connection
 
-        I_embeddings_aggregated, I_attention_scores = self.attention(
+        I_embeddings_aggregated, I_attention_scores = self.item_attention(
             Q=I_embeddings.unsqueeze(1), K=IA_embeddings, V=IA_embeddings
         ) # self attention
         I_attention_scores = I_attention_scores.squeeze(1) # (batch_size, n_aspects)
@@ -301,3 +304,4 @@ class AURA(nn.Module):
                 _out.update({'review': review})
 
         return _out
+    

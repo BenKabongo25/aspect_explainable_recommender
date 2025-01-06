@@ -17,7 +17,7 @@ config.review_flag = False
 config.rating_flag = True
 config.model_name_or_path = "t5-small"
 config.d_words = 512
-config.d_model = 128
+config.d_model = 256
 config.review_length = 256
 config.n_ratings_epochs = 50
 config.n_reviews_epochs = 0
@@ -68,7 +68,7 @@ for architecture in ["shared_self_attention", "notshared_self_attention",
         config.beta = len(config.aspects) / (1 + len(config.aspects))
 
         config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
-        config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, architecture)
+        config.save_dir = os.path.join("/home", "b.kabongo", "exps256", dataset, architecture)
 
         print(f"Running {dataset} with {architecture}")
         run(config)

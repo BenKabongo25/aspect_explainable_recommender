@@ -55,9 +55,9 @@ config.lemmatize_flag = False
 for dropout in [0.1, 0.2, 0.3, 0.4, 0.5]:
     config.dropout = dropout
 
-    for ablation in ["aggregation"]:
-        config.ablation = ablation
-        ablation = "AURA" + ablation
+    for architecture in [""]:
+        config.architecture = architecture
+        architecture = "AURA" + architecture
 
         for dataset in datasets:
             config.dataset = dataset
@@ -67,7 +67,7 @@ for dropout in [0.1, 0.2, 0.3, 0.4, 0.5]:
             config.beta = len(config.aspects) / (1 + len(config.aspects))
 
             config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
-            config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation + f"_dropout_{dropout}")
+            config.save_dir = os.path.join("/home", "b.kabongo", "exps256", dataset, architecture + f"_dropout_{dropout}")
 
-            print(f"Running {dataset} with {ablation} and dropout {dropout}")
+            print(f"Running {dataset} with {architecture} and dropout {dropout}")
             run(config)

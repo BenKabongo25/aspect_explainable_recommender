@@ -258,7 +258,7 @@ def run(config):
     writer = SummaryWriter(config.save_dir)
     config.writer = writer
 
-    data_df = pd.read_csv(config.dataset_path).dropna()
+    data_df = pd.read_csv(config.dataset_path)
     (train_df, eval_df, test_df), (users_vocab, items_vocab) = process_data(data_df, config)
 
     config.n_users = len(users_vocab)

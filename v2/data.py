@@ -6,61 +6,61 @@ from utils import *
 
 class RatingsReviewDataset(Dataset):
     
-        def __init__(self, data_df: pd.DataFrame, config: Any, tokenizer: T5Tokenizer=None):
-            super().__init__()
-            self.data_df = data_df
-            self.tokenizer = tokenizer
-            self.config = config
+    def __init__(self, data_df: pd.DataFrame, config: Any, tokenizer: T5Tokenizer=None):
+        super().__init__()
+        self.data_df = data_df
+        self.tokenizer = tokenizer
+        self.config = config
 
-            if self.config.review_flag:
-                self.reviews = self.data_df["review"].tolist()
-                self.reviews_tokens = []
-                self._process()
+        if self.config.review_flag:
+            self.reviews = self.data_df["review"].tolist()
+            self.reviews_tokens = []
+            self._process()
     
-        def __len__(self) -> int:
-            return len(self.data_df)
+    def __len__(self) -> int:
+        return len(self.data_df)
         
-        def _process(self):
-            for index in tqdm(range(len(self)), desc="Processing data", colour="green"):
-                review = self.reviews[index]
-                review = preprocess_text(review, self.config, self.config.review_length)
-                self.reviews[index] = review
-
-                inputs = self.tokenizer(
-                    review, 
-                    max_length=self.config.review_length,
-                    truncation=True, 
-                    padding="max_length",
-                    return_tensors="pt"
-                )
-                tokens = inputs["input_ids"].squeeze(0)
-                tokens[tokens == self.tokenizer.pad_token_id] = -100
-                self.reviews_tokens.append(tokens)
-                
-        def __getitem__(self, index) -> Any:
-            random.seed(index)
-            row = self.data_df.iloc[index]
-
-            user_id = row["user_id"]
-            item_id = row["item_id"]
-
-            overall_rating = row["rating"]
-            aspects_ratings = [row[aspect] for aspect in self.config.aspects]
-
-            _out = {
-                "user_id": user_id,
-                "item_id": item_id,
-                "overall_rating": overall_rating,
-                "aspects_ratings": aspects_ratings
-            }
-
-            if not self.config.review_flag:
-                return _out
-
+    def _process(self):
+        for index in tqdm(range(len(self)), desc="Processing data", colour="green"):
             review = self.reviews[index]
-            review_tokens = self.reviews_tokens[index]
-            _out.update({"review": review, "review_tokens": review_tokens})
+            review = preprocess_text(review, self.config, self.config.review_length)
+            self.reviews[index] = review
+
+            inputs = self.tokenizer(
+                review, 
+                max_length=self.config.review_length,
+                truncation=True, 
+                padding="max_length",
+                return_tensors="pt"
+            )
+            tokens = inputs["input_ids"].squeeze(0)
+            tokens[tokens == self.tokenizer.pad_token_id] = -100
+            self.reviews_tokens.append(tokens)
+                
+    def __getitem__(self, index) -> Any:
+        random.seed(index)
+        row = self.data_df.iloc[index]
+
+        user_id = row["user_id"]
+        item_id = row["item_id"]
+
+        overall_rating = row["rating"]
+        aspects_ratings = [row[aspect] for aspect in self.config.aspects]
+
+        _out = {
+            "user_id": user_id,
+            "item_id": item_id,
+            "overall_rating": overall_rating,
+            "aspects_ratings": aspects_ratings
+        }
+
+        if not self.config.review_flag:
             return _out
+
+        review = self.reviews[index]
+        review_tokens = self.reviews_tokens[index]
+        _out.update({"review": review, "review_tokens": review_tokens})
+        return _out
         
         
 def collate_fn(batch):

@@ -17,7 +17,7 @@ config.review_flag = False
 config.rating_flag = True
 config.model_name_or_path = "t5-small"
 config.d_words = 512
-config.d_model = 128
+config.d_model = 256
 config.review_length = 256
 config.n_ratings_epochs = 50
 config.n_reviews_epochs = 0
@@ -52,12 +52,12 @@ config.last_line_flag = False
 config.stem_flag = False
 config.lemmatize_flag = False
 
-for d_model in [32, 64, 128, 256, 512, 1024]:
+for d_model in [32, 64, 128, 256, 512]:
     config.d_model = d_model
 
-    for ablation in ["aggregation"]:
-        config.ablation = ablation
-        ablation = "AURA" + ablation
+    for architecture in [""]:
+        config.architecture = architecture
+        architecture = "AURA" + architecture
 
         for dataset in datasets:
             config.dataset = dataset
@@ -67,7 +67,7 @@ for d_model in [32, 64, 128, 256, 512, 1024]:
             config.beta = len(config.aspects) / (1 + len(config.aspects))
 
             config.dataset_path = os.path.join("/home", "b.kabongo", "aspects_datasets", dataset, "data.csv")
-            config.save_dir = os.path.join("/home", "b.kabongo", "exps", dataset, ablation + f"_d_model_{d_model}")
+            config.save_dir = os.path.join("/home", "b.kabongo", "exps256", dataset, architecture + f"_d_model_{d_model}")
 
-            print(f"Running {dataset} with {ablation} and d_model {d_model}")
+            print(f"Running {dataset} with {architecture} and d_model {d_model}")
             run(config)
