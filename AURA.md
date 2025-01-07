@@ -2,20 +2,20 @@
 
 ## Introduction
 
-![[../../images/review_ex/review_ex2.svg]]
+![[images/review_ex/review_ex2.svg]]
 **Figure 1: Example of a multi-aspect review from the TripAdvisor hotel dataset.** 
 
 ## Model
 
-![[../../images/aura_all.svg]]
+![[images/aura_all.svg]]
 **Figure 2: AURA Overview.** Rating module (left) Review module (right).
 Illustration of the AURA model (Aspect-based Unified Ratings Prediction and Personalized Review Generation with Attention). AURA combines unified prediction of overall ratings and ratings for specific aspects, as well as personalized review generation. On the left, the ratings prediction module is based on user and item embeddings, with attention to specific aspects to provide overall and aspects ratings. On the right, the review generation module relies on a transformer (T5 or Llama) to integrate user, item and aspects embeddings, enabling contextualized and personalized review generation.
 
-![[../../images/aura.svg]]
+![[images/aura.svg]]
 **Figure 3: AURA Rating module.**
 
 
-![[../../images/aura_review.svg]]
+![[images/aura_review.svg]]
 **Figure 4: AURA Review module.**
 
 ## Experiments
@@ -49,7 +49,7 @@ Illustration of the AURA model (Aspect-based Unified Ratings Prediction and Pers
 | [PEPLER](https://dl.acm.org/doi/pdf/10.1145/3580488) (2023) (Transformer)                    | [Link](https://github.com/lileipisces/PEPLER/tree/master)                           | Rating+Review | ✅      | ✅      | ❌      |
 ##### Multi-Aspects MLP (Ours)
 
-![[../../images/multi_aspects_mlp/multi_aspects_mlp.svg]]
+![[images/multi_aspects_mlp/multi_aspects_mlp.svg]]
 **Figure 5: Multi-Aspects Rating prediction module.** Without aspects modeling.
 
 ##### ANR + Aspects Loss
