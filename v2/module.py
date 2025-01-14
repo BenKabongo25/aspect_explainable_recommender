@@ -31,7 +31,6 @@ class Attention(nn.Module):
         Q = self.WQ(Q)
         K = self.WK(K)
         V = self.WV(V)
-
         attention_outputs, attention_scores = attention_function(Q, K, V, mask)
         return attention_outputs, attention_scores
 
@@ -152,16 +151,18 @@ class AURA(nn.Module):
 
         # Review
         if config.review_flag:
-            self.text_module = text_module
-            self.tokenizer = tokenizer
-
-            self.user_words_proj = nn.Linear(config.d_model, config.d_words)
-            self.item_words_proj = nn.Linear(config.d_model, config.d_words)
-            self.user_aspect_words_proj = nn.Linear(config.d_model, config.d_words)
-            self.item_aspect_words_proj = nn.Linear(config.d_model, config.d_words)
-
-        self.training_phase = 0 # 0: ratings, 1: prompt, 2: text module + prompt
+            self.prompt_embedding = nn.Sequential(
+                nn.Linear(2 * (1 + self.config.n_aspects) * config.d_model, config.n_prompt_tokens * config.d_words),
+                nn.ReLU(),
+                nn.Dropout(self.config.dropout),
+                nn.Linear(config.n_prompt_tokens * config.d_words, config.n_prompt_tokens * config.d_words)
+            )
         self._init_weights()
+
+        self.text_module = text_module
+        self.tokenizer = tokenizer
+
+        self.training_phase = 0 # 0: ratings, 1: prompt
 
     def _init_weights(self):
         for m in self.modules():
@@ -177,11 +178,10 @@ class AURA(nn.Module):
             self.prompt_grad(False)
             self.text_grad(False)
         elif phase == 1:
-            self.prompt_grad(True)
             self.ratings_grad(False)
-            self.text_grad(False)
-        elif phase == 2:
-            self.text_grad(True)
+            self.prompt_grad(True)
+            if not self.config.prompt_tuning:
+                self.text_grad(False)
 
     def ratings_grad(self, flag: bool=True):
         for param in self.user_embedding.parameters():
@@ -204,16 +204,8 @@ class AURA(nn.Module):
     def prompt_grad(self, flag: bool=True):
         if not self.config.review_flag:
             return
-        for param in self.user_words_proj.parameters():
+        for param in self.prompt_embedding.parameters():
             param.requires_grad = flag
-        for param in self.item_words_proj.parameters():
-            param.requires_grad = flag
-        for param in self.user_aspect_words_proj.parameters():
-            param.requires_grad = flag
-        for param in self.item_aspect_words_proj.parameters():
-            param.requires_grad = flag
-        #for param in self.prompt_embedding.parameters():
-        #    param.requires_grad = flag
 
     def text_grad(self, flag: bool=True):
         if not self.config.review_flag:
@@ -254,14 +246,12 @@ class AURA(nn.Module):
         ) # self attention
         U_attention_scores = U_attention_scores.squeeze(1) # (batch_size, n_aspects)
         U_embeddings_aggregated = U_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
-        U_embeddings = U_embeddings_aggregated # no skip connection
 
         I_embeddings_aggregated, I_attention_scores = self.item_attention(
             Q=I_embeddings.unsqueeze(1), K=IA_embeddings, V=IA_embeddings
         ) # self attention
         I_attention_scores = I_attention_scores.squeeze(1) # (batch_size, n_aspects)
         I_embeddings_aggregated = I_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
-        I_embeddings = I_embeddings_aggregated # no skip connection
 
         _out.update({
             "user": {
@@ -274,7 +264,7 @@ class AURA(nn.Module):
 
         if not self.config.review_flag or inference_flag or self.training_phase == 0:
             A_ratings_hat = torch.stack(A_ratings_hat, dim=1).squeeze(2) # (batch_size, n_aspects)
-            R_hat = self.overall_rating(torch.cat([U_embeddings, I_embeddings], dim=-1)).squeeze(1)
+            R_hat = self.overall_rating(torch.cat([U_embeddings_aggregated, I_embeddings_aggregated], dim=-1)).squeeze(1)
             #R_hat = torch.clamp(R_hat, min=self.config.min_rating, max=self.config.max_rating)
             losses = self.ratings_loss(R, R_hat, A_ratings, A_ratings_hat)
             _out.update({
@@ -284,15 +274,12 @@ class AURA(nn.Module):
             })
 
         if self.config.review_flag and (inference_flag or self.training_phase == 1):
-            U_embeddings_words = self.user_words_proj(U_embeddings).unsqueeze(1) # (batch_size, 1, d_words)
-            I_embeddings_words = self.item_words_proj(I_embeddings).unsqueeze(1) # (batch_size, 1, d_words)
-            UA_embeddings_words = self.user_aspect_words_proj(UA_embeddings) # (batch_size, n_aspects, d_words)
-            IA_embeddings_words = self.item_aspect_words_proj(IA_embeddings) # (batch_size, n_aspects, d_words)
             P_embeddings = torch.cat(
-                [U_embeddings_words, I_embeddings_words, UA_embeddings_words, IA_embeddings_words], 
+                [U_embeddings.unsqueeze(1), I_embeddings.unsqueeze(1), IA_embeddings, IA_embeddings], 
                 dim=1
-            ) # (batch_size, 2 * (1 + n_aspects), d_words)
-
+            ).view(U_embeddings.size(0), -1) # (batch_size, 2 * (1 + n_aspects) * d_model)
+            P_embeddings = self.prompt_embedding(P_embeddings).view(U_embeddings.size(0), -1, self.config.d_words) # (batch_size, n_prompt_tokens, d_words)
+            
             if not inference_flag:
                 review_loss = self.text_module.decode(P_embeddings, review_tokens)
                 losses = {"review": review_loss, "total": review_loss}

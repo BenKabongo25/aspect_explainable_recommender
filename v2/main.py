@@ -50,7 +50,7 @@ def train(model: AURA, config, optimizer, dataloader, training_phase=0):
     return losses
     
 
-def eval(model: AURA, config, dataloader):
+def eval(model: AURA, config, dataloader, training_phase=0):
     model.eval()
 
     users = []
@@ -70,7 +70,7 @@ def eval(model: AURA, config, dataloader):
 
         reviews_tokens = None
         reviews = None
-        if config.review_flag:
+        if config.review_flag and training_phase != 0:
             reviews_tokens = torch.LongTensor(batch["review_tokens"]).to(config.device) # (batch_size, sentence_length)
             reviews = (batch["review"]) # (batch_size,)
 
@@ -79,7 +79,7 @@ def eval(model: AURA, config, dataloader):
         R_hat = output["overall_rating"]
         A_ratings_hat = output["aspects_ratings"]
         reviews_hat = None
-        if config.review_flag:
+        if config.review_flag and training_phase != 0:
             reviews_hat = output["review"]
 
         users.extend(U_ids.cpu().detach().tolist())
@@ -88,7 +88,7 @@ def eval(model: AURA, config, dataloader):
         for a, aspect in enumerate(config.aspects):
             references[f"{aspect}_rating"].extend(A_ratings[:, a].cpu().detach().tolist())
             predictions[f"{aspect}_rating"].extend(A_ratings_hat[:, a].cpu().detach().tolist())
-        if config.review_flag:
+        if config.review_flag and training_phase != 0:
             references["review"].extend(reviews)
             predictions["review"].extend(reviews_hat)
 
@@ -102,7 +102,7 @@ def eval(model: AURA, config, dataloader):
                     *[f"{aspect} Rating: Actual={A_ratings[i][a]:.4f} Predicted={A_ratings_hat[i][a]:.4f}" 
                     for a, aspect in enumerate(config.aspects)]
                 ])
-                if config.review_flag:
+                if config.review_flag and training_phase != 0:
                     log += "\n" + "\n".join([
                         f"Review: {reviews[i]}",
                         f"Generated: {reviews_hat[i]}"
@@ -111,7 +111,7 @@ def eval(model: AURA, config, dataloader):
 
     scores = {}
     for element in references:
-        if element == "review" and config.review_flag:
+        if element == "review" and config.review_flag and training_phase != 0:
             scores[element] = review_evaluation(config, predictions[element], references[element])
         else:
             scores[element] = rating_evaluation_pytorch(config, predictions[element], references[element], users)
@@ -163,12 +163,12 @@ def trainer(model: AURA, config, train_dataloader, eval_dataloader):
             f"[{epoch} / {config.n_epochs}] Loss: {train_loss:.4f} " +
             f"Best: {config.rating_metric}={best_rating:.4f}"
         )
-        if config.review_flag:
+        if config.review_flag and training_phase != 0:
             desc += f" {config.review_metric}={best_review:.4f}"
 
         if epoch % config.eval_every == 0:
             with torch.no_grad():
-                scores = eval(model, config, dataloader=eval_dataloader)
+                scores = eval(model, config, dataloader=eval_dataloader, training_phase=training_phase)
             write_eval(config.writer, scores, "eval", epoch)
             
             for metric_set in scores.keys():
@@ -180,7 +180,7 @@ def trainer(model: AURA, config, train_dataloader, eval_dataloader):
                     eval_infos[metric_set][metric].append(scores[metric_set][metric])
 
             eval_rating = scores["overall_rating"][config.rating_metric]
-            if config.review_flag:
+            if config.review_flag and training_phase != 0:
                 eval_review = scores["review"][config.review_metric]
 
             if training_phase == 0:
@@ -198,7 +198,7 @@ def trainer(model: AURA, config, train_dataloader, eval_dataloader):
                 f"Loss: train={train_loss:.4f} " +
                 f"Rating ({config.rating_metric}): test={eval_rating:.4f} best={best_rating:.4f}"
             )
-            if config.review_flag:
+            if config.review_flag and training_phase != 0:
                 desc += f" Review ({config.review_metric}): test={eval_review:.4f} best={best_review:.4f}"
 
         config.logger.info(desc)
@@ -333,7 +333,10 @@ if __name__ == "__main__":
     parser.add_argument("--review_flag", action=argparse.BooleanOptionalAction)
     parser.set_defaults(review_flag=True)
     parser.add_argument("--rating_flag", action=argparse.BooleanOptionalAction)
-    parser.set_defaults(rating_flag=False)
+    parser.set_defaults(rating_flag=True)
+    parser.add_argument("--prompt_tuning_flag", action=argparse.BooleanOptionalAction)
+    parser.set_defaults(prompt_tuning_flag=True)
+    parser.add_argument("--n_prompt_tokens", type=int, default=50)
     parser.add_argument("--min_rating", type=float, default=1.0)
     parser.add_argument("--max_rating", type=float, default=5.0)
 
@@ -348,11 +351,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--alpha", type=float, default=1)
     parser.add_argument("--beta", type=float, default=1)
-    parser.add_argument("--gamma", type=float, default=1)
-    parser.add_argument("--lambda_", type=float, default=1)
+    #parser.add_argument("--gamma", type=float, default=1)
+    #parser.add_argument("--lambda_", type=float, default=1)
 
-    parser.add_argument("--review_flag", action=argparse.BooleanOptionalAction)
-    parser.set_defaults(review_flag=True)
     parser.add_argument("--n_ratings_epochs", type=int, default=20)
     parser.add_argument("--n_reviews_epochs", type=int, default=20)
     parser.add_argument("--rating_metric", type=str, default="rmse")
@@ -368,7 +369,8 @@ if __name__ == "__main__":
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--ranking_metrics_flag", action=argparse.BooleanOptionalAction)
     parser.set_defaults(ranking_metrics_flag=False)
-    parser.add_argument("--verbose", type=bool, default=True)
+    parser.add_argument("--verbose", action=argparse.BooleanOptionalAction)
+    parser.set_defaults(verbose=True)
     parser.add_argument("--verbose_every", type=int, default=1)
     parser.add_argument("--eval_every", type=int, default=1)
 

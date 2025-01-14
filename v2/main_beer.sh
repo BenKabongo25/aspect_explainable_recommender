@@ -1,0 +1,36 @@
+python3 main.py \
+    --dataset_name Hotels \
+    --dataset_path /home/b.kabongo/aspects_datasets/Beer/data.csv \
+    --save_dir /home/b.kabongo/exps256/Beer/AURA_t5_base/ \
+    --aspects appearance aroma palate taste \
+    --train_size 0.8 \
+    --eval_size 0.1 \
+    --test_size 0.1 \
+    --lang en \
+    --review_flag \
+    --rating_flag \
+    --prompt_tuning_flag \
+    --n_prompt_tokens 50 \
+    --min_rating 1.0 \
+    --max_rating 5.0 \
+    --model_name_or_path t5-base \
+    --d_words 768 \
+    --d_model 256 \
+    --review_length 256 \
+    --dropout 0.1 \
+    --no-load_model \
+    --alpha 0.143 \
+    --beta 0.857 \
+    --n_ratings_epochs 50 \
+    --n_reviews_epochs 50 \
+    --rating_metric rmse \
+    --review_metric meteor \
+    --lr 1e-3 \
+    --batch_size 32 \
+    --seed 42 \
+    --threshold_rating 4.0 \
+    --k 10 \
+    --no-ranking_metrics_flag \
+    --verbose \
+    --verbose_every 1 \
+    --eval_every 1
