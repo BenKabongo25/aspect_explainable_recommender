@@ -353,27 +353,69 @@ class ReviewGenerationModule(nn.Module):
 class AURA(nn.Module):
     """ AURA for joint training """
 
-    def __init__(self, config, rating_module, review_module):
+    def __init__(self, config, rating_module: AspectsRatingPredictionModule, review_module: ReviewGenerationModule):
         super().__init__()
         self.config = config
         self.rating_module = rating_module
         self.review_module = review_module
 
-    def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor,
-                labels: torch.Tensor=None) -> ModuleOutput:
+    def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor, labels: torch.Tensor=None) -> ModuleOutput:
+        _out = {}
+        
         rating_output = self.rating_module(U_ids, I_ids)
-        review_output = self.review_module(
-            rating_output.U_embeddings, rating_output.I_embeddings, labels=labels
-        )
-        _out = {
-            "ratings": rating_output,
-            "reviews": review_output
-        }
+        _out["rating_module"] = rating_output
+
+        if labels is not None:
+            review_output = self.review_module(
+                U_embeddings=rating_output.U_embeddings, I_embeddings=rating_output.I_embeddings, labels=labels,
+                UA_embeddings=rating_output.UA_embeddings, IA_embeddings=rating_output.IA_embeddings
+            )
+            _out["review_module"] = review_output
+
         return ModuleOutput(**_out)
     
     def generate(self, U_ids: torch.Tensor, I_ids: torch.Tensor) -> List[str]:
         rating_output = self.rating_module(U_ids, I_ids)
-        return self.review_module.generate(rating_output.U_embeddings, rating_output.I_embeddings)
+        return self.review_module.generate(
+            U_embeddings=rating_output.U_embeddings, I_embeddings=rating_output.I_embeddings,
+            UA_embeddings=rating_output.UA_embeddings, IA_embeddings=rating_output.IA_embeddings
+        )
+    
+    def save(self, path: str):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path: str):
+        self.load_state_dict(torch.load(path))
+
+
+class AURA_A(nn.Module):
+    """ AURA-A (without aspect modeling) for joint training """
+
+    def __init__(self, config, rating_module: RatingPredictionModule, review_module: ReviewGenerationModule):
+        super().__init__()
+        self.config = config
+        self.rating_module = rating_module
+        self.review_module = review_module
+
+    def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor, labels: torch.Tensor=None) -> ModuleOutput:
+        _out = {}
+
+        rating_output = self.rating_module(U_ids, I_ids)
+        _out["rating_module"] = rating_output
+
+        if labels is not None:
+            review_output = self.review_module(
+                U_embeddings=rating_output.U_embeddings, I_embeddings=rating_output.I_embeddings, labels=labels
+            )
+            _out["review_module"] = review_output
+
+        return ModuleOutput(**_out)
+    
+    def generate(self, U_ids: torch.Tensor, I_ids: torch.Tensor) -> List[str]:
+        rating_output = self.rating_module(U_ids, I_ids)
+        return self.review_module.generate(
+            U_embeddings=rating_output.U_embeddings, I_embeddings=rating_output.I_embeddings
+        )
     
     def save(self, path: str):
         torch.save(self.state_dict(), path)
