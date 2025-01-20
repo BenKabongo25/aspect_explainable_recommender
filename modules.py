@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from typing import List, Tuple, Dict
 
 
-def _get_module(input_dim, hidden_dim, output_dim, n_layers, dropout):
+def _get_mlp(input_dim, hidden_dim, output_dim, n_layers, dropout):
     layers = []
     layers.append(nn.Linear(input_dim, hidden_dim))
     layers.append(nn.ReLU())
@@ -24,6 +24,16 @@ def _get_module(input_dim, hidden_dim, output_dim, n_layers, dropout):
     layers.append(nn.Linear(hidden_dim, output_dim))
     module = nn.Sequential(*layers)
     return module
+
+
+def _init_weights(m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+    if isinstance(m, nn.Embedding):
+        init_range = 0.1
+        nn.init.uniform_(m.weight, -init_range, init_range)
 
 
 class ModuleOutput:
@@ -91,21 +101,28 @@ class RatingPredictionModule(nn.Module):
         self.config = config
         self.user_embedding = nn.Embedding(config.n_users, config.d_model)
         self.item_embedding = nn.Embedding(config.n_items, config.d_model)
-        self.overall_rating = _get_module(
+        self.overall_rating = _get_mlp(
             config.d_model * 2, config.d_model, 1, config.n_layers, config.dropout
         )
+        self.apply(_init_weights)
 
     def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor) -> torch.Tensor:
         U_embeddings = self.user_embedding(U_ids) # (batch_size, d_model)
         I_embeddings = self.item_embedding(I_ids) # (batch_size, d_model)
         R = self.overall_rating(torch.cat([U_embeddings, I_embeddings], dim=-1)).squeeze(-1)
-        R = torch.clamp(R, min=self.config.min_rating, max=self.config.max_rating)
+        #R = torch.clamp(R, min=self.config.min_rating, max=self.config.max_rating)
         _out = {
             "U_embeddings": U_embeddings,
             "I_embeddings": I_embeddings,
             "overall_rating": R
         }
         return ModuleOutput(**_out)
+    
+    def save(self, path: str):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path: str):
+        self.load_state_dict(torch.load(path))
     
 
 class AspectsRatingPredictionModule(nn.Module):
@@ -117,25 +134,30 @@ class AspectsRatingPredictionModule(nn.Module):
 
         self.user_embedding = nn.Embedding(config.n_users, config.d_model)
         self.item_embedding = nn.Embedding(config.n_items, config.d_model)
-        self.overall_rating = _get_module(
+        self.overall_rating = _get_mlp(
             config.d_model * 2, config.d_model, 1, config.n_layers, config.dropout
         )
+
         self.user_attention = Attention(config.d_model)
         self.user_aspects_embedding = nn.ModuleList([
-            _get_module(config.d_model * 2, config.d_model, config.d_model, config.n_layers, config.dropout)
-            for _ in range(config.n_aspects)
-        ])
-        self.item_attention = Attention(config.d_model)
-        self.item_aspects_embedding = nn.ModuleList([
-            _get_module(config.d_model * 2, config.d_model, config.d_model, config.n_layers, config.dropout)
-            for _ in range(config.n_aspects)
-        ])
-        self.aspects_rating = nn.ModuleList([
-            _get_module(config.d_model * 2, config.d_model, 1, config.n_layers, config.dropout)
+            _get_mlp(config.d_model, config.d_model, config.d_model, config.n_layers, config.dropout)
             for _ in range(config.n_aspects)
         ])
 
-    def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor) -> torch.Tensor:
+        self.item_attention = Attention(config.d_model)
+        self.item_aspects_embedding = nn.ModuleList([
+            _get_mlp(config.d_model, config.d_model, config.d_model, config.n_layers, config.dropout)
+            for _ in range(config.n_aspects)
+        ])
+
+        self.aspects_ratings = nn.ModuleList([
+            _get_mlp(config.d_model * 2, config.d_model, 1, config.n_layers, config.dropout)
+            for _ in range(config.n_aspects)
+        ])
+
+        self.apply(_init_weights)
+
+    def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor) -> ModuleOutput:
         U_embeddings = self.user_embedding(U_ids) # (batch_size, d_model)
         I_embeddings = self.item_embedding(I_ids) # (batch_size, d_model)
 
@@ -148,8 +170,8 @@ class AspectsRatingPredictionModule(nn.Module):
             UA_embeddings.append(au_embeddings)
             IA_embeddings.append(ai_embeddings)
 
-            a_rating = self.aspects_rating[i](torch.cat([au_embeddings, ai_embeddings], dim=-1)) # (batch_size,)
-            a_rating = torch.clamp(a_rating, min=self.config.min_rating, max=self.config.max_rating)
+            a_rating = self.aspects_ratings[i](torch.cat([au_embeddings, ai_embeddings], dim=-1)) # (batch_size,)
+            #a_rating = torch.clamp(a_rating, min=self.config.min_rating, max=self.config.max_rating)
             A_ratings_hat.append(a_rating)
 
         UA_embeddings = torch.stack(UA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
@@ -169,7 +191,7 @@ class AspectsRatingPredictionModule(nn.Module):
         I_embeddings_aggregated = I_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
 
         R_hat = self.overall_rating(torch.cat([U_embeddings_aggregated, I_embeddings_aggregated], dim=-1)).squeeze(1) # (batch_size,)
-        R_hat = torch.clamp(R_hat, min=self.config.min_rating, max=self.config.max_rating)
+        #R_hat = torch.clamp(R_hat, min=self.config.min_rating, max=self.config.max_rating)
 
         _out = {
             "U_embeddings": U_embeddings,
@@ -180,8 +202,54 @@ class AspectsRatingPredictionModule(nn.Module):
             "I_embeddings_aggregated": I_embeddings_aggregated,
             "U_attention_scores": U_attention_scores,
             "I_attention_scores": I_attention_scores,
-            "A_ratings_hat": A_ratings_hat,
+            "aspects_ratings": A_ratings_hat,
             "overall_rating": R_hat
+        }
+        return ModuleOutput(**_out)
+    
+    def save(self, path: str):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path: str):
+        self.load_state_dict(torch.load(path))
+
+    def get_users_details(self, U_ids: torch.Tensor) -> ModuleOutput:
+        U_embeddings = self.user_embedding(U_ids) # (batch_size, d_model)
+        UA_embeddings = []
+        for i in range(self.config.n_aspects):
+            au_embeddings = self.user_aspects_embedding[i](U_embeddings)
+            UA_embeddings.append(au_embeddings)
+        UA_embeddings = torch.stack(UA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
+        U_embeddings_aggregated, U_attention_scores = self.user_attention(
+            Q=U_embeddings.unsqueeze(1), K=UA_embeddings, V=UA_embeddings
+        ) # self attention
+        U_attention_scores = U_attention_scores.squeeze(1) # (batch_size, n_aspects)
+        U_embeddings_aggregated = U_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
+        _out = {
+            "U_embeddings": U_embeddings,
+            "UA_embeddings": UA_embeddings,
+            "U_embeddings_aggregated": U_embeddings_aggregated,
+            "U_attention_scores": U_attention_scores
+        }
+        return ModuleOutput(**_out)
+    
+    def get_items_details(self, I_ids: torch.Tensor) -> ModuleOutput:
+        I_embeddings = self.item_embedding(I_ids) # (batch_size, d_model)
+        IA_embeddings = []
+        for i in range(self.config.n_aspects):
+            ai_embeddings = self.item_aspects_embedding[i](I_embeddings)
+            IA_embeddings.append(ai_embeddings)
+        IA_embeddings = torch.stack(IA_embeddings, dim=1) # (batch_size, n_aspects, d_model)
+        I_embeddings_aggregated, I_attention_scores = self.item_attention(
+            Q=I_embeddings.unsqueeze(1), K=IA_embeddings, V=IA_embeddings
+        ) # self attention
+        I_attention_scores = I_attention_scores.squeeze(1) # (batch_size, n_aspects)
+        I_embeddings_aggregated = I_embeddings_aggregated.squeeze(1) # (batch_size, d_model)
+        _out = {
+            "I_embeddings": I_embeddings,
+            "IA_embeddings": IA_embeddings,
+            "I_embeddings_aggregated": I_embeddings_aggregated,
+            "I_attention_scores": I_attention_scores
         }
         return ModuleOutput(**_out)
     
@@ -207,22 +275,23 @@ class TextModule:
 class T5TextModule(nn.Module, TextModule):
     """ T5 text module """
 
-    def __init__(self, config, t5_model):
+    def __init__(self, config, t5_model, tokenizer):
         super().__init__()
         self.config = config
         self.t5_model = t5_model
+        self.tokenizer = tokenizer
 
     def forward(self, embeddings: torch.Tensor=None, labels: torch.Tensor=None) -> torch.Tensor:
         return self.t5_model(inputs_embeds=embeddings, labels=labels).loss
 
     def encode(self, tokens: torch.Tensor, mask: torch.Tensor=None) -> torch.Tensor:
-        return self.forward(tokens=tokens, mask=mask, encode=True)
+        return self.forward(tokens=tokens, mask=mask)
 
     def decode(self, embeddings: torch.Tensor, labels: torch.Tensor=None) -> torch.Tensor:
         return self.forward(embeddings=embeddings, labels=labels)
 
     def generate(self, embeddings: torch.Tensor) -> torch.Tensor:
-        return self.t5_model.generate(
+        output = self.t5_model.generate(
             inputs_embeds=embeddings,
             do_sample=False,
             max_length=self.config.review_length,
@@ -230,22 +299,25 @@ class T5TextModule(nn.Module, TextModule):
             top_p=0.95,
             repetition_penalty=1.2
         )
+        output_texts = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+        return output_texts
 
 
 class ReviewGenerationModule(nn.Module):
     """ Personalized review generation module """
 
-    def __init__(self, config, text_module, tokenizer):
+    def __init__(self, config, text_module):
         super().__init__()
         self.config = config
-        self.text_module = text_module
-        self.tokenizer = tokenizer
 
         self.input_dim = config.n_prompt_elements * config.d_model
         self.output_dim = config.n_prompt_tokens * config.d_words
-        self.prompt_embedding = _get_module(
+        self.prompt_embedding = _get_mlp(
             self.input_dim, self.output_dim, self.output_dim, config.n_layers, config.dropout
         )
+        self.apply(_init_weights)
+
+        self.text_module = text_module
 
     def prompt(self, U_embeddings: torch.Tensor, I_embeddings: torch.Tensor,
                 UA_embeddings: torch.Tensor=None, IA_embeddings: torch.Tensor=None) -> torch.Tensor:
@@ -260,9 +332,9 @@ class ReviewGenerationModule(nn.Module):
         return P_embeddings
 
     def forward(self, U_embeddings: torch.Tensor, I_embeddings: torch.Tensor, labels: torch.Tensor,
-                UA_embeddings: torch.Tensor=None, IA_embeddings: torch.Tensor=None) -> torch.Tensor:
+                UA_embeddings: torch.Tensor=None, IA_embeddings: torch.Tensor=None) -> ModuleOutput:
         P_embeddings = self.prompt(U_embeddings, I_embeddings, UA_embeddings, IA_embeddings)
-        loss = self.text_module.decode(P_embeddings, labels).loss
+        loss = self.text_module.decode(P_embeddings, labels)
         _out = {"loss": loss, "P_embeddings": P_embeddings}
         return ModuleOutput(**_out)
     
@@ -270,6 +342,12 @@ class ReviewGenerationModule(nn.Module):
                  UA_embeddings: torch.Tensor=None, IA_embeddings: torch.Tensor=None) -> List[str]:
         P_embeddings = self.prompt(U_embeddings, I_embeddings, UA_embeddings, IA_embeddings)
         return self.text_module.generate(P_embeddings)
+    
+    def save(self, path: str):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path: str):
+        self.load_state_dict(torch.load(path))
 
 
 class AURA(nn.Module):
@@ -282,17 +360,23 @@ class AURA(nn.Module):
         self.review_module = review_module
 
     def forward(self, U_ids: torch.Tensor, I_ids: torch.Tensor,
-                labels: torch.Tensor=None) -> Dict[str, torch.Tensor]:
+                labels: torch.Tensor=None) -> ModuleOutput:
         rating_output = self.rating_module(U_ids, I_ids)
         review_output = self.review_module(
             rating_output.U_embeddings, rating_output.I_embeddings, labels=labels
         )
-        return {
+        _out = {
             "ratings": rating_output,
             "reviews": review_output
         }
+        return ModuleOutput(**_out)
     
     def generate(self, U_ids: torch.Tensor, I_ids: torch.Tensor) -> List[str]:
         rating_output = self.rating_module(U_ids, I_ids)
         return self.review_module.generate(rating_output.U_embeddings, rating_output.I_embeddings)
     
+    def save(self, path: str):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path: str):
+        self.load_state_dict(torch.load(path))

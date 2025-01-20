@@ -1,36 +1,35 @@
-python3 main.py \
+python3 main_sequential_training.py \
     --dataset_name Hotels \
-    --dataset_path /home/b.kabongo/aspects_datasets/Beer/data.csv \
-    --save_dir /home/b.kabongo/exps256/Beer/AURA_t5_base/ \
-    --aspects appearance aroma palate taste \
+    --dataset_path /home/b.kabongo/aspects_datasets/Hotels/data.csv \
+    --save_dir /home/b.kabongo/exps256/Hotels/AURA_seq_t5_small/ \
+    --aspects cleanliness location rooms service sleep_quality value \
     --train_size 0.8 \
     --eval_size 0.1 \
     --test_size 0.1 \
     --lang en \
     --review_flag \
-    --rating_flag \
     --prompt_tuning_flag \
     --n_prompt_tokens 50 \
     --min_rating 1.0 \
     --max_rating 5.0 \
-    --model_name_or_path t5-base \
-    --d_words 768 \
+    --model_name_or_path t5-small \
+    --d_words 512 \
     --d_model 256 \
-    --review_length 256 \
+    --review_length 128 \
     --dropout 0.1 \
     --no-load_model \
     --alpha 0.143 \
     --beta 0.857 \
-    --n_ratings_epochs 50 \
-    --n_reviews_epochs 50 \
+    --n_rating_epochs 50 \
+    --n_review_epochs 50 \
     --rating_metric rmse \
-    --review_metric meteor \
+    --review_metric bleu \
     --lr 1e-3 \
-    --batch_size 32 \
+    --rating_batch_size 32 \
+    --review_batch_size 4 \
     --seed 42 \
     --threshold_rating 4.0 \
     --k 10 \
-    --no-ranking_metrics_flag \
     --verbose \
     --verbose_every 1 \
     --eval_every 1

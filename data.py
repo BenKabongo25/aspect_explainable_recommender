@@ -1,7 +1,6 @@
 # Ben Kabongo
 # January 2025
 
-
 import pandas as pd
 import torch
 import random
@@ -32,7 +31,7 @@ class RatingsReviewDataset(Dataset):
     def _process(self):
         for index in tqdm(range(len(self)), desc="Processing data", colour="green"):
             review = self.reviews[index]
-            review = preprocess_text(review, self.config, self.config.review_length)
+            review = preprocess_text(self.config, review, self.config.review_length)
             self.reviews[index] = review
 
             inputs = self.tokenizer(

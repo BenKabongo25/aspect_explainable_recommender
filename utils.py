@@ -1,6 +1,7 @@
 # Ben Kabongo
 # January 2025
 
+import matplotlib.pyplot as plt
 import nltk
 import numpy as np
 import random
@@ -95,3 +96,25 @@ def preprocess_text(config, text: str, max_length: int=-1) -> str:
             text = text[:max_length]
         text = " ".join(text)
     return text
+
+
+def plot_attention_weights(user_weights, item_weights, aspect_names, save_path=None):
+    aspects = np.arange(len(aspect_names))
+    data = np.stack([user_weights, item_weights], axis=1)
+    fig, ax = plt.subplots(figsize=(4, 4))
+    cax = ax.imshow(data, cmap='viridis', aspect='auto', interpolation='nearest')
+
+    ax.set_yticks(aspects)
+    ax.set_yticklabels(aspect_names, fontsize=12)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['User', 'Item'], fontsize=12)
+
+    cbar = fig.colorbar(cax, ax=ax, orientation='vertical')
+    cbar.set_label('Attention Intensity', fontsize=12)
+
+    ax.grid(False)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+    else:
+        plt.show()

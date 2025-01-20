@@ -43,7 +43,7 @@ def rating_train(
         dataloader: DataLoader
     ):
     rating_model.train()
-    runing_losses = {"total": 0.0, "overall_rating": 0.0, "aspect_rating": 0.0}
+    runing_losses = {"total": 0.0, "overall_rating": 0.0, "aspects_ratings": 0.0}
 
     for batch in tqdm(dataloader, f"Training [Rating]", colour="cyan", total=len(dataloader)):
         U_ids = torch.LongTensor(batch["user_id"]).to(config.device) # (batch_size,)
@@ -61,7 +61,7 @@ def rating_train(
 
             runing_losses["total"] += losses.total.item()
             runing_losses["overall_rating"] += losses.overall_rating.item()
-            runing_losses["aspect_rating"] += losses.aspect_rating.item()
+            runing_losses["aspects_ratings"] += losses.aspects_ratings.item()
 
         else:
             loss = loss_fn(R, R_hat)
@@ -71,9 +71,9 @@ def rating_train(
         loss.backward()
         optimizer.step()
 
-    for loss in losses:
-        losses[loss] /= len(dataloader)
-    return losses
+    for loss in runing_losses.keys():
+        runing_losses[loss] /= len(dataloader)
+    return runing_losses
 
 
 def rating_eval(
@@ -92,7 +92,7 @@ def rating_eval(
         for aspect in config.aspects:
             references[f"{aspect}_rating"] = []
             predictions[f"{aspect}_rating"] = []
-
+           
     for batch_idx, batch in tqdm(enumerate(dataloader), "Evaluation", colour="cyan", total=len(dataloader)):
         U_ids = torch.LongTensor(batch["user_id"]).to(config.device) # (batch_size,)
         I_ids = torch.LongTensor(batch["item_id"]).to(config.device) # (batch_size,)
@@ -113,14 +113,13 @@ def rating_eval(
                 references[f"{aspect}_rating"].extend(A_ratings[:, a].cpu().detach().tolist())
                 predictions[f"{aspect}_rating"].extend(A_ratings_hat[:, a].cpu().detach().tolist())
 
-
         if config.verbose and batch_idx == 0:
             n_samples = min(5, len(U_ids))
             for i in range(n_samples):
                 log = "\n" + "\n".join([
                     f"User ID: {U_ids[i]}",
                     f"Item ID: {I_ids[i]}",
-                    f"Overall Rating: Actual={R[i]:.4f} Predicted={R_hat[i]:4f}",
+                    f"Overall Rating: Actual={R[i]:.4f} Predicted={R_hat[i]:4f}\n",
                 ])
                 if config.aspects_flag:
                     log += "\n".join([
@@ -166,7 +165,7 @@ def rating_trainer(
 
         train_loss = losses["total"]
         desc = (
-            f"[{epoch} / {config.n_epochs}] Loss: {train_loss:.4f} " +
+            f"[{epoch} / {config.n_rating_epochs}] Loss: {train_loss:.4f} " +
             f"Best: {config.rating_metric}={best_rating:.4f}"
         )
 
@@ -189,7 +188,7 @@ def rating_trainer(
                 best_rating = eval_rating
 
             desc = (
-                f"[{epoch} / {config.n_epochs}] " +
+                f"[{epoch} / {config.n_rating_epochs}] " +
                 f"Loss: train={train_loss:.4f} " +
                 f"Rating ({config.rating_metric}): test={eval_rating:.4f} best={best_rating:.4f}"
             )
@@ -271,7 +270,7 @@ def review_eval(
                 UA_embeddings = rating_output.UA_embeddings
                 IA_embeddings = rating_output.IA_embeddings
 
-        reviews = reviews = (batch["review"]) # (batch_size,)
+        reviews = (batch["review"]) # (batch_size,)
         reviews_hat = review_model.generate(U_embeddings, I_embeddings, UA_embeddings, IA_embeddings)
 
         references.extend(reviews)
@@ -320,7 +319,7 @@ def review_trainer(
 
         train_loss = losses["total"]
         desc = (
-            f"[{epoch} / {config.n_epochs}] Loss: {train_loss:.4f} " +
+            f"[{epoch} / {config.n_review_epochs}] Loss: {train_loss:.4f} " +
             f"Best: {config.review_metric}={best_review:.4f}"
         )
 
@@ -343,7 +342,7 @@ def review_trainer(
                     best_review = eval_review
 
             desc = (
-                f"[{epoch} / {config.n_epochs}] " +
+                f"[{epoch} / {config.n_review_epochs}] " +
                 f"Loss: train={train_loss:.4f} " +
                 f" Review ({config.review_metric}): test={eval_review:.4f} best={best_review:.4f}"
             )
@@ -356,22 +355,6 @@ def review_trainer(
             json.dump(results, res_file)
 
     return train_infos, eval_infos
-
-
-def trainer(
-        config,
-        rating_model: Union[RatingPredictionModule, AspectsRatingPredictionModule],
-        review_model: ReviewGenerationModule,
-        train_dataloader: DataLoader,
-        eval_dataloader: DataLoader
-    ):
-    rating_train_infos, rating_eval_infos = rating_trainer(config, rating_model, train_dataloader, eval_dataloader)
-    review_train_infos, review_eval_infos = review_trainer(config, review_model, rating_model, train_dataloader, eval_dataloader)
-    infos = {
-        "train": {"rating": rating_train_infos, "review": review_train_infos},
-        "eval": {"rating": rating_eval_infos, "review": review_eval_infos}
-    }
-    return infos
 
 
 def run(config):
@@ -398,7 +381,7 @@ def run(config):
     writer = SummaryWriter(config.save_dir)
     config.writer = writer
 
-    data_df = pd.read_csv(config.dataset_path)
+    data_df = pd.read_csv(config.dataset_path).drop_duplicates()
     (train_df, eval_df, test_df), (users_vocab, items_vocab) = process_data(config, data_df)
 
     config.n_users = len(users_vocab)
@@ -419,63 +402,79 @@ def run(config):
         if config.prompt_tuning_flag:
             for param in t5_model.parameters():
                 param.requires_grad = False
-        text_module = T5TextModule(config, t5_model)
+        text_module = T5TextModule(config, t5_model, tokenizer)
         config.n_reviews_epochs = 0
 
     train_dataset = RatingsReviewDataset(config, train_df, tokenizer)
     eval_dataset = RatingsReviewDataset(config, eval_df, tokenizer)
     test_dataset = RatingsReviewDataset(config, test_df, tokenizer)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, collate_fn=collate_fn)
-    eval_dataloader = DataLoader(eval_dataset, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)    
+    log = "\n" + (
+        f"Dataset: {config.dataset_name}\n" +
+        f"Aspects: {config.aspects}\n" +
+        f"#Users: {config.n_users}\n" +
+        f"#Items: {config.n_items}\n" +
+        f"Device: {device}\n\n" +
+        f"Args:\n{config}\n\n" +
+        f"Data:\n{train_df.head(5)}\n\n"
+    )
+    config.logger.info(log)
 
+    config.logger.info("Rating training...")
+    train_dataloader = DataLoader(train_dataset, batch_size=config.rating_batch_size, shuffle=True, collate_fn=collate_fn)
+    eval_dataloader = DataLoader(eval_dataset, batch_size=config.rating_batch_size, shuffle=False, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=config.rating_batch_size, shuffle=False, collate_fn=collate_fn)    
+    
     if config.aspects_flag:
         rating_model = AspectsRatingPredictionModule(config)
     else:
         rating_model = RatingPredictionModule(config)
     rating_model.to(config.device)
-    review_model = ReviewGenerationModule(config, text_module, tokenizer)
-    review_model.to(config.device)
 
     if config.load_model:
         rating_model.load(config.save_rating_model_path)
-        review_model.load(config.save_review_model_path)
 
-    if config.verbose:
-        log = "\n" + (
-            f"Model name: {config.model_name_or_path}\n" +
-            f"Dataset: {config.dataset_name}\n" +
-            f"Aspects: {config.aspects}\n" +
-            f"#Users: {config.n_users}\n" +
-            f"#Items: {config.n_items}\n" +
-            f"Device: {device}\n\n" +
-            f"Args:\n{config}\n\n" +
-            f"Rating Model: {rating_model}\n\n" +
-            f"Review Model: {review_model}\n\n" +
-            f"Data:\n{train_df.head(5)}\n\n"
-        )
-        config.logger.info(log)
+    rating_train_infos, rating_eval_infos = rating_trainer(config, rating_model, train_dataloader, eval_dataloader)
 
-    config.logger.info("Training...")
-    results = trainer(config, rating_model, review_model, train_dataloader, eval_dataloader)
-
-    config.logger.info("Testing...")
+    config.logger.info("Rating testing...")
     rating_model.load(config.save_rating_model_path)
-    review_model.load(config.save_review_model_path)
-
     with torch.no_grad():
         rating_test_infos = rating_eval(config, rating_model, test_dataloader, RATING_METRICS)
-        review_test_infos = review_eval(config, review_model, rating_model, test_dataloader, REVIEW_METRICS)
-        test_infos = {"rating": rating_test_infos, "review": review_test_infos}
+    
+    ratings_results = {"test": rating_test_infos, "train": rating_train_infos, "eval": rating_eval_infos}
+    config.logger.info(ratings_results)
+    with open(config.res_rating_file_path, "w") as res_file:
+        json.dump(ratings_results, res_file)
 
-    results["test"] = test_infos
-    config.logger.info(results)
-    with open(config.res_file_path, "w") as res_file:
-        json.dump(results, res_file)
+    if not config.review_flag:
+        return
+
+    rating_model.eval()
+    
+    config.logger.info("Review training...")
+    train_dataloader = DataLoader(train_dataset, batch_size=config.review_batch_size, shuffle=True, collate_fn=collate_fn)
+    eval_dataloader = DataLoader(eval_dataset, batch_size=config.review_batch_size, shuffle=False, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test_dataset, batch_size=config.review_batch_size, shuffle=False, collate_fn=collate_fn)    
+
+    review_model = ReviewGenerationModule(config, text_module)
+    review_model.to(config.device)
+
+    if config.load_model:
+        review_model.load(config.save_review_model_path)
+
+    review_train_infos, review_eval_infos = review_trainer(config, review_model, rating_model, train_dataloader, eval_dataloader)
+
+    config.logger.info("Review testing...")
+    review_model.load(config.save_review_model_path)
+    with torch.no_grad():
+        review_test_infos = review_eval(config, review_model, rating_model, test_dataloader, REVIEW_METRICS)
+    
+    reviews_results = {"test": review_test_infos, "train": review_train_infos, "eval": review_eval_infos}
+    config.logger.info(reviews_results)
+    with open(config.res_review_file_path, "w") as res_file:
+        json.dump(reviews_results, res_file)
 
     config.logger.info("Done!")
-    return results
 
 
 if __name__ == "__main__":
@@ -499,6 +498,7 @@ if __name__ == "__main__":
     parser.add_argument("--d_words", type=int, default=512)
     parser.add_argument("--d_model", type=int, default=256)
     parser.add_argument("--review_length", type=int, default=128)
+    parser.add_argument("--n_layers", type=int, default=0) 
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--save_dir", type=str, default="")
     parser.add_argument("--load_model", action=argparse.BooleanOptionalAction)
@@ -512,7 +512,8 @@ if __name__ == "__main__":
     parser.add_argument("--rating_metric", type=str, default="rmse")
     parser.add_argument("--review_metric", type=str, default="meteor")
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--rating_batch_size", type=int, default=512)
+    parser.add_argument("--review_batch_size", type=int, default=8)
     parser.add_argument("--train_size", type=float, default=0.8)
     parser.add_argument("--eval_size", type=float, default=0.1)
     parser.add_argument("--test_size", type=float, default=0.1)
